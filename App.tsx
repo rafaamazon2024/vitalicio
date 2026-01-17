@@ -1,72 +1,65 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  LogOut, Search, Grid, List, Book, PlayCircle, Plus, Trash2, Edit3, 
-  LayoutDashboard, MessageSquare, Eye, CheckCircle, X, Send, 
-  ArrowRight, Users, Layers, Star, RotateCcw, Loader2, ExternalLink, 
-  Database, AlertCircle, Image as ImageIcon, Info, FileText, UploadCloud,
-  Settings as SettingsIcon, Monitor, Sparkles, Link as LinkIcon, Mail, ShieldCheck
+  LogOut, Search, Grid, Book, PlayCircle, X, 
+  ArrowRight, Layers, Star, RotateCcw, Loader2, ExternalLink, 
+  Database, AlertCircle, CheckCircle, Sparkles, Info, Plus, Trash2, Edit3, Save, LayoutDashboard, Settings as SettingsIcon, Image as ImageIcon
 } from 'lucide-react';
-import { User, Material, AppSettings, CATEGORIES, CATEGORY_ICONS, MaterialType } from './types';
+import { User, Material, AppSettings, CATEGORIES, MaterialType } from './types';
 import { supabase } from './supabase';
 
-const getRandomGradient = () => {
-  const gradients = [
-    'from-indigo-600 via-purple-600 to-pink-600',
-    'from-amber-500 via-orange-600 to-red-600',
-    'from-cyan-500 via-blue-600 to-indigo-700',
-    'from-emerald-500 via-teal-600 to-cyan-700',
-    'from-rose-500 via-fuchsia-600 to-purple-700'
-  ];
-  return gradients[Math.floor(Math.random() * gradients.length)];
-};
+const VIBRANT_GRADIENTS = [
+  'from-indigo-600 via-purple-600 to-pink-500',
+  'from-amber-400 via-orange-500 to-red-600',
+  'from-cyan-400 via-blue-500 to-indigo-600',
+  'from-emerald-400 via-teal-500 to-cyan-600',
+  'from-fuchsia-500 via-purple-600 to-violet-700',
+  'from-blue-600 via-indigo-700 to-purple-800'
+];
+
+const getRandomGradient = () => VIBRANT_GRADIENTS[Math.floor(Math.random() * VIBRANT_GRADIENTS.length)];
 
 const DEFAULT_SETTINGS: AppSettings = {
   heroTitle: "Domine\nO Próximo Nível.",
-  heroSubtitle: "Sua biblioteca privada de alta performance, agora 100% online.",
+  heroSubtitle: "Sua biblioteca privada de alta performance, agora 100% online e sob seu comando.",
   heroImageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1964&auto=format&fit=crop",
-  heroButtonText: "Explorar Conteúdo",
-  heroButtonLink: "#vitrine",
-  heroButton2Text: "Ver Catálogo",
-  heroButton2Link: "#vitrine"
+  heroButtonText: "Começar Agora",
+  heroButtonLink: "#vitrine"
 };
 
 const App: React.FC = () => {
+  // --- ESTADOS DE AUTH E APP ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthMode, setIsAuthMode] = useState<'login' | 'register'>('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authName, setAuthName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isAppInit, setIsAppInit] = useState(true);
-  
+  const [connError, setConnError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<{id: string, message: string, type?: 'success' | 'error'}[]>([]);
+
+  // --- ESTADOS DE CONTEÚDO ---
   const [items, setItems] = useState<Material[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'todos' | 'curso' | 'ebook'>('todos');
   const [selectedItem, setSelectedItem] = useState<Material | null>(null);
-
-  const [isEditing, setIsEditing] = useState(false);
-  const [adminTab, setAdminTab] = useState<'conteudo' | 'vitrine'>('conteudo');
-  const [isUploading, setIsUploading] = useState<'none' | 'image' | 'content' | 'hero'>('none');
+  
+  // --- ESTADOS DE ADMIN ---
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isEditing, setIsEditing] = useState<Material | null>(null);
   const [materialForm, setMaterialForm] = useState<Partial<Material>>({
     title: '', type: 'curso', category: CATEGORIES[0], description: '', imageUrl: '', videoUrl: ''
   });
 
-  const [toasts, setToasts] = useState<{id: string, message: string, type?: 'success' | 'error'}[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const contentInputRef = useRef<HTMLInputElement>(null);
-  const heroInputRef = useRef<HTMLInputElement>(null);
-
   const addToast = (message: string, type: 'success' | 'error' = 'success') => {
     const id = Date.now().toString();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(current => current.filter(t => t.id !== id));
-    }, 5000);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
 
+  // Renderizador de links inteligentes
   const renderDescription = (text: string) => {
     if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -74,8 +67,10 @@ const App: React.FC = () => {
     return parts.map((part, i) => {
       if (part.match(urlRegex)) {
         return (
-          <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-4 decoration-purple-500/50 inline-flex items-center gap-1 transition-all" onClick={(e) => e.stopPropagation()}>
-            Link Externo <ExternalLink size={12} />
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer" 
+            className="text-purple-400 hover:text-purple-300 underline underline-offset-4 decoration-purple-500/50 inline-flex items-center gap-1 transition-all font-black"
+            onClick={(e) => e.stopPropagation()}>
+            Acessar <ExternalLink size={14} />
           </a>
         );
       }
@@ -83,55 +78,25 @@ const App: React.FC = () => {
     });
   };
 
-  const fetchData = async () => {
-    try {
-      const { data: mData, error: mError } = await supabase.from('materials').select('*').order('created_at', { ascending: false });
-      if (mError) throw mError;
-      
-      const formattedItems = (mData || []).map((m: any) => ({
-        id: m.id,
-        title: m.title,
-        type: m.type as MaterialType,
-        category: m.category,
-        description: m.description || '',
-        imageUrl: m.image_url || '',
-        videoUrl: m.video_url || '',
-        views: m.views || 0,
-        gradient: m.gradient || getRandomGradient(),
-        comments: [],
-        isReadBy: []
-      }));
-      
-      setItems(formattedItems);
-
-      const { data: sData } = await supabase.from('settings').select('*').maybeSingle();
-      if (sData) {
-        setSettings({
-          heroTitle: sData.hero_title || DEFAULT_SETTINGS.heroTitle,
-          heroSubtitle: sData.hero_subtitle || DEFAULT_SETTINGS.heroSubtitle,
-          heroImageUrl: sData.hero_image_url || DEFAULT_SETTINGS.heroImageUrl,
-          heroButtonText: sData.hero_button_text || DEFAULT_SETTINGS.heroButtonText,
-          heroButtonLink: sData.hero_button_link || DEFAULT_SETTINGS.heroButtonLink,
-          heroButton2Text: sData.hero_button_2_text || DEFAULT_SETTINGS.heroButton2Text,
-          heroButton2Link: sData.hero_button_2_link || DEFAULT_SETTINGS.heroButton2Link,
-        });
-      }
-    } catch (e) {
-      console.error("Erro ao carregar dados:", e);
-    }
-  };
-
+  // --- EFEITOS DE INICIALIZAÇÃO ---
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) handleSetUser(session.user);
-      setIsAppInit(false);
-    });
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (session?.user) handleSetUser(session.user);
+      } catch (err: any) {
+        setConnError(err.message);
+      } finally {
+        setIsAppInit(false);
+      }
+    };
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) handleSetUser(session.user);
-      else setCurrentUser(null);
+      else if (!currentUser?.id.startsWith('admin-root')) setCurrentUser(null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -148,30 +113,17 @@ const App: React.FC = () => {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
     if (authEmail === 'admin@academia.com' && authPassword === 'admin123') {
-      setCurrentUser({ id: 'admin-root', name: 'Administrador', email: authEmail, isAdmin: true });
-      addToast("Acesso Root Ativado!");
+      setCurrentUser({ id: 'admin-root', name: 'Diretoria Vitalício', email: authEmail, isAdmin: true });
       setIsLoading(false);
       return;
     }
-
     try {
-      if (isAuthMode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({ 
-          email: authEmail, 
-          password: authPassword, 
-          options: { 
-            data: { full_name: authName },
-            emailRedirectTo: window.location.origin 
-          } 
-        });
-        if (error) throw error;
-        addToast("Cadastro enviado para o seu e-mail!");
-      }
+      const { error } = isAuthMode === 'login' 
+        ? await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
+        : await supabase.auth.signUp({ email: authEmail, password: authPassword });
+      if (error) throw error;
+      addToast(isAuthMode === 'login' ? "Acesso autorizado!" : "Cadastro realizado!");
     } catch (e: any) {
       addToast(e.message, 'error');
     } finally {
@@ -179,68 +131,80 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const fetchData = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({ 
-        provider: 'google', 
-        options: { redirectTo: window.location.origin } 
+      const { data: mData, error: mError } = await supabase.from('materials').select('*').order('created_at', { ascending: false });
+      if (mError) throw mError;
+
+      const { data: sData } = await supabase.from('settings').select('*').maybeSingle();
+      if (sData) setSettings({
+        heroTitle: sData.hero_title || DEFAULT_SETTINGS.heroTitle,
+        heroSubtitle: sData.hero_subtitle || DEFAULT_SETTINGS.heroSubtitle,
+        heroImageUrl: sData.hero_image_url || DEFAULT_SETTINGS.heroImageUrl,
+        heroButtonText: sData.hero_button_text || DEFAULT_SETTINGS.heroButtonText,
+        heroButtonLink: sData.hero_button_link || DEFAULT_SETTINGS.heroButtonLink,
       });
-      if (error) throw error;
+      
+      setItems((mData || []).map(m => ({
+        ...m,
+        id: m.id,
+        title: m.title,
+        type: m.type as MaterialType,
+        category: m.category,
+        description: m.description || '',
+        imageUrl: m.image_url || '',
+        videoUrl: m.video_url || '',
+        views: m.views || 0,
+        gradient: m.gradient || getRandomGradient(),
+        comments: [],
+        isReadBy: []
+      })));
     } catch (e: any) {
-      addToast("Acesso social disponível em breve.", "error");
+      addToast("Erro ao carregar dados.", "error");
     }
   };
 
-  const handleSaveMaterial = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!materialForm.title) return addToast("Preencha o título", "error");
+  useEffect(() => { if (currentUser) fetchData(); }, [currentUser]);
 
-    const payload = { 
-      title: materialForm.title, 
-      type: materialForm.type, 
-      category: materialForm.category, 
-      description: materialForm.description, 
-      image_url: materialForm.imageUrl, 
-      video_url: materialForm.videoUrl, 
-      gradient: materialForm.gradient || getRandomGradient() 
-    };
-
+  // --- FUNÇÕES DE ADMIN ---
+  const saveMaterial = async () => {
+    setIsLoading(true);
     try {
-      let error;
-      if (isEditing && materialForm.id) {
-        const res = await supabase.from('materials').update(payload).eq('id', materialForm.id);
-        error = res.error;
-      } else {
-        const res = await supabase.from('materials').insert([payload]);
-        error = res.error;
-      }
+      const payload = {
+        title: materialForm.title,
+        type: materialForm.type,
+        category: materialForm.category,
+        description: materialForm.description,
+        image_url: materialForm.imageUrl,
+        video_url: materialForm.videoUrl,
+        gradient: isEditing?.gradient || getRandomGradient()
+      };
+
+      const { error } = isEditing 
+        ? await supabase.from('materials').update(payload).eq('id', isEditing.id)
+        : await supabase.from('materials').insert([payload]);
+
       if (error) throw error;
-      addToast("Catálogo atualizado!");
-      setIsEditing(false);
+      addToast(isEditing ? "Atualizado!" : "Criado com sucesso!");
+      setIsEditing(null);
       setMaterialForm({ title: '', type: 'curso', category: CATEGORIES[0], description: '', imageUrl: '', videoUrl: '' });
       fetchData();
     } catch (e: any) {
-      addToast("Falha técnica ao salvar", "error");
+      addToast(e.message, 'error');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleFileUpload = async (file: File, type: 'image' | 'content' | 'hero') => {
-    setIsUploading(type);
+  const deleteMaterial = async (id: string) => {
+    if (!confirm("Confirmar exclusão definitiva?")) return;
     try {
-      const path = `${type}/${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-      const { error } = await supabase.storage.from('materials').upload(path, file);
+      const { error } = await supabase.from('materials').delete().eq('id', id);
       if (error) throw error;
-      const { data } = supabase.storage.from('materials').getPublicUrl(path);
-      
-      if (type === 'image') setMaterialForm(prev => ({ ...prev, imageUrl: data.publicUrl }));
-      else if (type === 'hero') setSettings(prev => ({ ...prev, heroImageUrl: data.publicUrl }));
-      else setMaterialForm(prev => ({ ...prev, videoUrl: data.publicUrl }));
-      
-      addToast("Upload 100%!");
+      addToast("Removido.");
+      fetchData();
     } catch (e: any) {
-      addToast("Erro ao processar arquivo", "error");
-    } finally {
-      setIsUploading('none');
+      addToast(e.message, 'error');
     }
   };
 
@@ -253,328 +217,107 @@ const App: React.FC = () => {
     });
   }, [items, searchTerm, activeCategory, activeTab]);
 
-  const handleHeroButtonClick = (link: string) => {
-    if (!link) return;
-    if (link.startsWith('#')) {
-      document.getElementById(link.substring(1))?.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      window.open(link, '_blank', 'noopener,noreferrer');
-    }
-  };
+  if (isAppInit) return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-6">
+      <div className="w-16 h-16 border-t-4 border-purple-600 border-r-4 border-transparent rounded-full animate-spin"></div>
+      <p className="text-[10px] font-black tracking-[10px] text-purple-500 uppercase">Vitalício</p>
+    </div>
+  );
 
-  useEffect(() => { if (currentUser) fetchData(); }, [currentUser]);
-
-  if (isAppInit) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-purple-600" size={32} /></div>;
-
+  // --- LOGIN VIEW ---
   if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black p-6 relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-           <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-purple-600/10 blur-[180px] rounded-full animate-aurora"></div>
-           <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-pink-600/10 blur-[180px] rounded-full animate-aurora" style={{animationDelay: '-5s'}}></div>
-        </div>
-
-        <div className="glass max-w-sm w-full p-10 rounded-[3rem] text-center space-y-8 relative z-10 border border-white/10 shadow-3xl">
-          <div className="space-y-2">
-            <ShieldCheck size={52} className="mx-auto text-purple-500 mb-2 drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]" />
-            <h1 className="text-3xl font-black text-gradient-primary tracking-tighter uppercase">VITALÍCIO</h1>
-            <p className="text-[10px] font-black uppercase text-gray-500 tracking-[5px]">Portal de Membros Elite</p>
-          </div>
+        <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-purple-600/10 blur-[200px] rounded-full animate-aurora"></div>
+        <div className="glass max-w-md w-full p-12 md:p-16 rounded-[4rem] border border-white/10 text-center animate-fade-in relative z-10">
+          <div className="w-20 h-20 mx-auto mb-10 p-5 rounded-[2rem] bg-gradient-primary shadow-2xl flex items-center justify-center animate-pulse"><Layers size={32} /></div>
+          <h1 className="text-4xl font-black tracking-tighter mb-2 text-gradient-primary uppercase">Vitalício</h1>
+          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[4px] mb-12">Portal da Elite</p>
           
-          <div className="space-y-4">
-            <form onSubmit={handleAuth} className="space-y-3 text-left">
-              {isAuthMode === 'register' && (
-                <input type="text" placeholder="Seu Nome" value={authName} onChange={e => setAuthName(e.target.value)} className="w-full bg-white/5 p-4 rounded-2xl outline-none border border-white/10 focus:border-purple-500 transition-all text-[11px] font-bold" required />
-              )}
-              <input type="email" placeholder="E-mail" value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-white/5 p-4 rounded-2xl outline-none border border-white/10 focus:border-purple-500 transition-all text-[11px] font-bold" required />
-              <input type="password" placeholder="Senha" value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-white/5 p-4 rounded-2xl outline-none border border-white/10 focus:border-purple-500 transition-all text-[11px] font-bold" required />
-              <button type="submit" disabled={isLoading} className="w-full py-4.5 bg-gradient-primary font-black uppercase text-[10px] tracking-widest rounded-2xl hover:brightness-110 transition-all flex items-center justify-center gap-2 shadow-2xl active:scale-95 disabled:opacity-50">
-                {isLoading ? <Loader2 className="animate-spin" size={16} /> : isAuthMode === 'login' ? 'Acessar Agora' : 'Criar Conta Premium'}
-              </button>
-            </form>
+          <form onSubmit={handleAuth} className="space-y-4 text-left">
+            <input type="email" placeholder="E-mail" value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-1 focus:ring-purple-500 transition-all" required />
+            <input type="password" placeholder="Senha" value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm outline-none focus:ring-1 focus:ring-purple-500 transition-all" required />
+            <button type="submit" disabled={isLoading} className="w-full py-5 rounded-[2rem] bg-gradient-primary font-black uppercase text-[11px] tracking-[4px] shadow-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
+              {isLoading ? <Loader2 className="animate-spin" size={16} /> : 'Acessar Academia'}
+            </button>
+          </form>
+
+          <div className="mt-12 pt-8 border-t border-white/5">
+            <div className={`text-[10px] py-2 px-4 rounded-xl border font-bold uppercase ${connError ? 'border-red-500/20 text-red-500 bg-red-500/5' : 'border-green-500/20 text-green-500 bg-green-500/5'}`}>
+              {connError ? `Erro de Conexão: ${connError}` : 'Pronto para Sincronizar'}
+            </div>
           </div>
-
-          <div className="flex items-center gap-4">
-            <div className="flex-1 h-px bg-white/5"></div>
-            <span className="text-[8px] font-black uppercase text-gray-700 tracking-[3px]">Acesso Rápido</span>
-            <div className="flex-1 h-px bg-white/5"></div>
-          </div>
-
-          <button onClick={handleGoogleLogin} className="w-full py-4 bg-white/5 text-white/50 border border-white/10 font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-white hover:text-black transition-all shadow-xl uppercase text-[9px] tracking-widest group">
-            <svg className="w-4 h-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="currentColor"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="currentColor"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="currentColor"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="currentColor"/></svg>
-            Google Social
-          </button>
-
-          <button onClick={() => setIsAuthMode(isAuthMode === 'login' ? 'register' : 'login')} className="text-[9px] text-gray-500 hover:text-white transition-colors uppercase font-black tracking-widest block w-full">
-            {isAuthMode === 'login' ? 'Não possui acesso? Cadastre-se' : 'Já é membro? Faça Login'}
-          </button>
         </div>
       </div>
     );
   }
 
+  // --- APP VIEW ---
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col md:flex-row">
-      <aside className="w-full md:w-64 border-r border-white/10 p-6 flex flex-col gap-8 glass z-50 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-primary rounded-xl shadow-lg"><Layers size={20}/></div>
-          <h2 className="text-lg font-black text-gradient-primary tracking-tighter">VITALÍCIO</h2>
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-hide">
-          <p className="text-[8px] font-black uppercase text-gray-700 tracking-[3px] mb-4 ml-2">Conteúdos</p>
-          <button onClick={() => setActiveCategory('Todos')} className={`w-full text-left px-4 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === 'Todos' ? 'bg-purple-600 shadow-xl text-white' : 'text-gray-500 hover:bg-white/5 hover:text-white'}`}>Tudo</button>
-          {CATEGORIES.map(c => (
-            <button key={c} onClick={() => setActiveCategory(c)} className={`w-full text-left px-4 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === c ? 'bg-purple-600 shadow-xl text-white' : 'text-gray-500 hover:bg-white/5 hover:text-white'}`}>{c}</button>
-          ))}
-        </nav>
-        <div className="pt-6 border-t border-white/10">
-          <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center font-black text-[11px] shadow-lg">{currentUser.name[0]}</div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-black truncate">{currentUser.name}</p>
-              <p className="text-[7px] uppercase font-black text-gray-600 tracking-widest">{currentUser.isAdmin ? 'Administrador' : 'Elite'}</p>
-            </div>
+    <div className="min-h-screen bg-black text-white flex flex-col md:flex-row relative">
+      <div className="fixed top-6 right-6 z-[100] space-y-3 pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className={`animate-slide-in glass px-6 py-4 rounded-2xl border-l-4 pointer-events-auto flex items-center gap-4 shadow-2xl ${t.type === 'error' ? 'border-red-500 bg-red-500/5' : 'border-purple-500 bg-purple-500/5'}`}>
+            {t.type === 'error' ? <AlertCircle size={18} className="text-red-500" /> : <CheckCircle size={18} className="text-purple-500" />}
+            <span className="text-xs font-black tracking-wide">{t.message}</span>
           </div>
-          <button onClick={async () => { await supabase.auth.signOut(); setCurrentUser(null); }} className="w-full flex items-center justify-center gap-2 py-3.5 bg-red-500/10 text-red-500 rounded-xl text-[8px] font-black uppercase tracking-widest border border-red-500/10 hover:bg-red-500 hover:text-white transition-all"><LogOut size={12} /> Sair</button>
-        </div>
+        ))}
+      </div>
+
+      <aside className="w-full md:w-80 glass border-r border-white/10 p-10 flex flex-col gap-12 bg-[#050505]/98 backdrop-blur-3xl z-50">
+        <div className="flex items-center gap-4"><div className="p-3 rounded-2xl bg-gradient-primary shadow-xl"><Layers size={24} /></div><h2 className="text-2xl font-black text-gradient-primary tracking-tighter">VITALÍCIO</h2></div>
+        
+        {currentUser.isAdmin && (
+          <button onClick={() => setIsAdminMode(!isAdminMode)} className={`w-full flex items-center gap-4 px-6 py-5 rounded-3xl text-xs font-black transition-all ${isAdminMode ? 'bg-orange-500 text-white shadow-xl' : 'bg-white/5 text-orange-400 hover:bg-white/10 border border-orange-500/20'}`}>
+            <LayoutDashboard size={18} /> {isAdminMode ? 'Sair do Gerente' : 'Painel de Controle'}
+          </button>
+        )}
+
+        <nav className="space-y-2 flex-1 overflow-y-auto scrollbar-hide">
+          <p className="text-[10px] font-black text-gray-700 uppercase tracking-[4px] mb-6 ml-4">Diretório</p>
+          <button onClick={() => { setActiveCategory('Todos'); setIsAdminMode(false); }} className={`w-full text-left px-6 py-5 rounded-3xl text-xs font-black transition-all flex items-center gap-4 ${activeCategory === 'Todos' && !isAdminMode ? 'bg-purple-600 shadow-xl' : 'text-gray-500 hover:bg-white/5'}`}><Grid size={16} /> Todos</button>
+          {CATEGORIES.map(cat => (<button key={cat} onClick={() => { setActiveCategory(cat); setIsAdminMode(false); }} className={`w-full text-left px-6 py-5 rounded-3xl text-xs font-black transition-all flex items-center gap-4 ${activeCategory === cat && !isAdminMode ? 'bg-purple-600 shadow-xl' : 'text-gray-500 hover:bg-white/5'}`}><Star size={16} /> {cat}</button>))}
+        </nav>
+        <button onClick={() => supabase.auth.signOut().then(() => setCurrentUser(null))} className="w-full flex items-center justify-center gap-3 px-8 py-5 rounded-3xl bg-red-500/5 text-red-400 font-black text-xs hover:bg-red-500/10 transition-all border border-red-500/10"><LogOut size={18} /> Sair</button>
       </aside>
 
-      <main className="flex-1 overflow-y-auto scrollbar-hide p-6 md:p-10 relative">
-        {currentUser.isAdmin ? (
-          <div className="max-w-6xl mx-auto space-y-10 animate-fade-in">
-            <header className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-white/10 pb-8">
-              <div>
-                <p className="text-purple-500 font-black uppercase tracking-[5px] text-[10px] mb-2">Painel de Gestão</p>
-                <h1 className="text-4xl font-black tracking-tighter">Vitalício Admin</h1>
-              </div>
-              <div className="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 shadow-lg backdrop-blur-xl">
-                <button onClick={() => setAdminTab('conteudo')} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminTab === 'conteudo' ? 'bg-purple-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>Conteúdo</button>
-                <button onClick={() => setAdminTab('vitrine')} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${adminTab === 'vitrine' ? 'bg-orange-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>Vitrine</button>
-              </div>
-            </header>
-
-            {adminTab === 'conteudo' ? (
-              <div className="grid lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-4">
-                  <div className="glass-card p-8 rounded-3xl border border-white/10 sticky top-5 shadow-3xl">
-                    <h3 className="text-sm font-black mb-8 flex items-center gap-3 uppercase text-purple-400">
-                      {isEditing ? <Edit3 size={20}/> : <Plus size={20}/>} 
-                      {isEditing ? 'Editar Material' : 'Cadastrar Material'}
-                    </h3>
-                    <form onSubmit={handleSaveMaterial} className="space-y-5">
-                      <div className="space-y-1.5">
-                        <label className="text-[8px] font-black uppercase text-gray-500 ml-2">Nome do Módulo</label>
-                        <input type="text" placeholder="Ex: Método IP do Milhão" value={materialForm.title} onChange={e => setMaterialForm({...materialForm, title: e.target.value})} className="w-full bg-white/5 p-4 rounded-xl outline-none border border-white/10 text-[11px] font-bold focus:border-purple-500 transition-all" />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black uppercase text-gray-500 ml-2">Formato</label>
-                          <select value={materialForm.type} onChange={e => setMaterialForm({...materialForm, type: e.target.value as MaterialType})} className="w-full bg-black p-4 rounded-xl border border-white/10 font-black uppercase text-[8px] tracking-widest outline-none">
-                            <option value="curso">Vídeo</option>
-                            <option value="ebook">PDF</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] font-black uppercase text-gray-500 ml-2">Nicho</label>
-                          <select value={materialForm.category} onChange={e => setMaterialForm({...materialForm, category: e.target.value})} className="w-full bg-black p-4 rounded-xl border border-white/10 font-black uppercase text-[8px] tracking-widest outline-none">
-                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="p-5 bg-white/[0.03] border border-white/5 rounded-2xl space-y-4">
-                        <div className="flex justify-between items-center text-[9px] font-black uppercase text-gray-400">
-                          Imagem / Mockup 
-                          <button type="button" onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 bg-purple-600 rounded-lg text-[8px] text-white hover:bg-purple-700 transition-all">
-                            {isUploading === 'image' ? '...' : 'Fazer Upload'}
-                          </button>
-                        </div>
-                        <input type="text" value={materialForm.imageUrl} onChange={e => setMaterialForm({...materialForm, imageUrl: e.target.value})} className="w-full bg-black/60 p-2.5 rounded-lg text-[9px] border border-white/5 font-mono text-purple-300" placeholder="URL direta ou Upload" />
-                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'image')} />
-                      </div>
-
-                      <div className="p-5 bg-white/[0.03] border border-white/5 rounded-2xl space-y-4">
-                        <div className="flex justify-between items-center text-[9px] font-black uppercase text-gray-400">
-                          Link de Entrega
-                          <button type="button" onClick={() => contentInputRef.current?.click()} className="px-3 py-1.5 bg-blue-600 rounded-lg text-[8px] text-white hover:bg-blue-700 transition-all">
-                            {isUploading === 'content' ? '...' : 'Subir Arquivo'}
-                          </button>
-                        </div>
-                        <input type="text" value={materialForm.videoUrl} onChange={e => setMaterialForm({...materialForm, videoUrl: e.target.value})} className="w-full bg-black/60 p-2.5 rounded-lg text-[9px] border border-white/5 font-mono text-blue-300" placeholder="Link externo ou PDF" />
-                        <input type="file" ref={contentInputRef} className="hidden" onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'content')} />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[8px] font-black uppercase text-gray-500 ml-2">Copy de Venda / Descrição</label>
-                        <textarea placeholder="Fale sobre o conteúdo..." value={materialForm.description} onChange={e => setMaterialForm({...materialForm, description: e.target.value})} className="w-full bg-white/5 p-4 rounded-xl outline-none border border-white/10 h-28 resize-none text-[11px] font-medium" />
-                      </div>
-
-                      <button type="submit" disabled={isUploading !== 'none'} className="w-full py-4.5 rounded-2xl bg-gradient-primary font-black uppercase tracking-[4px] text-[10px] shadow-2xl disabled:opacity-50 hover:brightness-110 active:scale-95 transition-all">
-                        {isEditing ? 'Salvar Alteração' : 'Publicar Módulo'}
-                      </button>
-                      
-                      {isEditing && (
-                        <button type="button" onClick={() => { setIsEditing(false); setMaterialForm({ title: '', type: 'curso', category: CATEGORIES[0], description: '', imageUrl: '', videoUrl: '' }); }} className="w-full py-2 text-[9px] font-black uppercase text-gray-600 hover:text-white transition-all">Cancelar Edição</button>
-                      )}
-                    </form>
-                  </div>
-                </div>
-
-                <div className="lg:col-span-8">
-                  <div className="glass-card rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
-                    <div className="p-6 border-b border-white/5 bg-white/[0.02] flex justify-between items-center text-[10px] font-black uppercase text-gray-500 tracking-[3px]">
-                      Catálogo <span className="bg-purple-600/20 px-3 py-1 rounded-full text-purple-400 border border-purple-500/10">{items.length} ITENS</span>
-                    </div>
-                    <div className="divide-y divide-white/5 max-h-[700px] overflow-y-auto scrollbar-hide">
-                      {items.map(item => (
-                        <div key={item.id} className="p-6 flex items-center gap-6 hover:bg-white/[0.02] transition-all group">
-                          <img src={item.imageUrl} className="w-16 h-16 rounded-2xl object-cover border border-white/10 shadow-xl group-hover:scale-105 transition-transform shrink-0" alt="" />
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-black truncate tracking-tight mb-1">{item.title}</h4>
-                            <span className="text-[7px] uppercase font-black text-gray-600 tracking-widest bg-white/5 px-2 py-0.5 rounded border border-white/5">{item.category}</span>
-                          </div>
-                          <div className="flex gap-3">
-                            <button onClick={() => { setIsEditing(true); setMaterialForm(item); window.scrollTo({top:0, behavior:'smooth'}); }} className="p-3 bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-500/20 transition-all border border-blue-500/10 shadow-lg"><Edit3 size={16}/></button>
-                            <button onClick={async () => { if(confirm('Excluir este módulo?')) { await supabase.from('materials').delete().eq('id', item.id); fetchData(); addToast('Removido'); } }} className="p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-all border border-red-500/10 shadow-lg"><Trash2 size={16}/></button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="max-w-4xl mx-auto glass-card p-10 rounded-[2.5rem] border border-white/10 space-y-10 shadow-3xl">
-                 <div className="flex items-center gap-4 border-b border-white/5 pb-6">
-                    <Monitor size={24} className="text-orange-500" />
-                    <h3 className="text-2xl font-black uppercase tracking-tighter">Design da Área do Aluno</h3>
-                 </div>
-                 
-                 <div className="grid md:grid-cols-2 gap-10">
-                    <div className="space-y-6">
-                       <div className="space-y-2">
-                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 ml-2">Título Impactante</label>
-                          <textarea value={settings.heroTitle} onChange={e => setSettings({...settings, heroTitle: e.target.value})} className="w-full bg-white/5 p-5 rounded-2xl border border-white/10 font-black text-xl h-32 outline-none focus:border-orange-500 transition-all" />
-                       </div>
-                       <div className="space-y-2">
-                          <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 ml-2">Frase de Apoio</label>
-                          <textarea value={settings.heroSubtitle} onChange={e => setSettings({...settings, heroSubtitle: e.target.value})} className="w-full bg-white/5 p-5 rounded-2xl border border-white/10 font-medium text-[11px] h-24 outline-none focus:border-orange-500 transition-all italic" />
-                       </div>
-                       
-                       <div className="grid grid-cols-1 gap-4">
-                          <div className="p-5 bg-white/[0.03] border border-white/10 rounded-2xl space-y-4">
-                             <p className="text-[9px] font-black uppercase text-white tracking-[2px]">Call to Action 1</p>
-                             <div className="grid grid-cols-2 gap-2">
-                                <input type="text" placeholder="Texto" value={settings.heroButtonText} onChange={e => setSettings({...settings, heroButtonText: e.target.value})} className="bg-black/40 p-3 rounded-xl border border-white/10 font-black text-[9px] outline-none" />
-                                <input type="text" placeholder="URL (#vitrine)" value={settings.heroButtonLink} onChange={e => setSettings({...settings, heroButtonLink: e.target.value})} className="bg-black/40 p-3 rounded-xl border border-white/10 font-bold text-[9px] outline-none text-orange-400" />
-                             </div>
-                          </div>
-                          <div className="p-5 bg-white/[0.03] border border-white/10 rounded-2xl space-y-4">
-                             <p className="text-[9px] font-black uppercase text-gray-400 tracking-[2px]">Call to Action 2</p>
-                             <div className="grid grid-cols-2 gap-2">
-                                <input type="text" placeholder="Texto" value={settings.heroButton2Text} onChange={e => setSettings({...settings, heroButton2Text: e.target.value})} className="bg-black/40 p-3 rounded-xl border border-white/10 font-black text-[9px] outline-none" />
-                                <input type="text" placeholder="Link Externo" value={settings.heroButton2Link} onChange={e => setSettings({...settings, heroButton2Link: e.target.value})} className="bg-black/40 p-3 rounded-xl border border-white/10 font-bold text-[9px] outline-none text-orange-400" />
-                             </div>
-                          </div>
-                       </div>
-                    </div>
-
-                    <div className="space-y-8">
-                       <div className="p-6 bg-white/[0.03] border border-white/5 rounded-3xl space-y-5">
-                          <div className="flex justify-between items-center text-[10px] font-black uppercase text-orange-500 tracking-widest">
-                             Banner Principal
-                             <button type="button" onClick={() => heroInputRef.current?.click()} className="px-4 py-2 bg-orange-600 rounded-xl text-[9px] uppercase text-white hover:bg-orange-700 transition-all shadow-lg">Upload</button>
-                          </div>
-                          <img src={settings.heroImageUrl} className="w-full aspect-video rounded-2xl object-cover border border-white/10 shadow-2xl" alt="Preview" />
-                          <input type="file" ref={heroInputRef} className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'hero')} />
-                       </div>
-                       
-                       <button onClick={async () => {
-                         const currentSettings = (await supabase.from('settings').select('id').maybeSingle()).data;
-                         const { error } = await supabase.from('settings').upsert({ 
-                           id: currentSettings?.id || undefined, 
-                           hero_title: settings.heroTitle, 
-                           hero_subtitle: settings.heroSubtitle, 
-                           hero_image_url: settings.heroImageUrl, 
-                           hero_button_text: settings.heroButtonText, 
-                           hero_button_link: settings.heroButtonLink,
-                           hero_button_2_text: settings.heroButton2Text,
-                           hero_button_2_link: settings.heroButton2Link
-                         });
-                         if(error) addToast('Erro ao atualizar vitrine', 'error');
-                         else addToast('Layout atualizado com sucesso!');
-                       }} className="w-full py-5 bg-orange-600 rounded-[1.5rem] font-black uppercase tracking-[4px] text-[11px] shadow-3xl hover:brightness-110 hover:scale-[1.02] active:scale-95 transition-all">Publicar Alterações</button>
-                    </div>
-                 </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-16 animate-fade-in max-w-7xl mx-auto">
-            <section className="relative p-8 md:p-16 rounded-[3rem] overflow-hidden shadow-4xl min-h-[500px] flex flex-col justify-center group border border-white/5">
-              <img src={settings.heroImageUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-[20s] scale-105 group-hover:scale-115" alt="Banner" />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/40 to-transparent"></div>
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-              
-              <div className="relative z-10 max-w-3xl">
-                <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full glass border border-white/10 text-[9px] font-black uppercase tracking-[4px] mb-8 animate-aurora shadow-2xl">
-                  <Star size={14} fill="#FACC15" className="text-yellow-400" /> Conteúdo Vitalício Ativado
-                </div>
-                <h1 className="text-5xl lg:text-7xl font-black mb-6 leading-[0.9] tracking-tighter text-white whitespace-pre-wrap drop-shadow-2xl">{settings.heroTitle}</h1>
-                <p className="text-base lg:text-lg text-white/80 font-medium mb-10 leading-relaxed italic drop-shadow-xl max-w-xl opacity-90">"{settings.heroSubtitle}"</p>
-                <div className="flex flex-wrap items-center gap-5">
-                  <button onClick={() => handleHeroButtonClick(settings.heroButtonLink)} className="px-10 py-4.5 rounded-2xl bg-white text-black font-black uppercase text-[10px] tracking-[4px] hover:shadow-white/20 hover:shadow-2xl hover:-translate-y-1 transition-all shadow-xl active:scale-95">{settings.heroButtonText}</button>
-                  <button onClick={() => handleHeroButtonClick(settings.heroButton2Text)} className="px-8 py-4.5 rounded-2xl glass text-white font-black uppercase text-[9px] tracking-[3px] border border-white/20 hover:bg-white/10 hover:-translate-y-1 transition-all active:scale-95">{settings.heroButton2Text}</button>
-                </div>
+      <main className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
+        {!isAdminMode ? (
+          <>
+            <section className="relative p-10 lg:p-24 rounded-[4rem] m-6 overflow-hidden shadow-3xl min-h-[600px] flex flex-col justify-center group border border-white/5">
+              <img src={settings.heroImageUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-[30s] scale-105 group-hover:scale-110" alt="Hero" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black via-black/40 to-transparent"></div>
+              <div className="relative z-10 max-w-4xl animate-fade-in">
+                <div className="inline-flex items-center gap-4 px-8 py-3 rounded-full glass border border-white/20 text-[10px] font-black uppercase tracking-[6px] mb-12 shadow-2xl backdrop-blur-3xl"><Sparkles size={16} fill="currentColor" className="text-purple-400" /> Premium Access</div>
+                <h1 className="text-6xl lg:text-9xl font-black mb-10 leading-[0.85] tracking-tighter whitespace-pre-wrap">{settings.heroTitle}</h1>
+                <p className="text-xl lg:text-3xl text-white/70 font-medium mb-16 leading-relaxed italic max-w-2xl">{settings.heroSubtitle}</p>
+                <a href={settings.heroButtonLink} className="w-fit px-16 py-7 rounded-[2.5rem] bg-white text-black font-black uppercase text-[12px] tracking-[6px] hover:scale-105 transition-all shadow-3xl active:scale-95 inline-block">Começar Agora</a>
               </div>
             </section>
 
-            <div id="vitrine" className="space-y-10">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-8 border-b border-white/5 pb-8">
-                <div className="flex items-center gap-4">
-                  <div className="w-1.5 h-10 bg-gradient-primary rounded-full"></div>
-                  <h2 className="text-2xl font-black tracking-tighter uppercase tracking-[2px]">Acervo <span className="text-purple-500">Premium</span></h2>
-                </div>
-                <div className="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-md">
-                  {(['todos', 'curso', 'ebook'] as const).map(tab => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} className={`px-8 py-3 rounded-xl text-[9px] font-black uppercase tracking-[3px] transition-all ${activeTab === tab ? 'bg-purple-600 text-white shadow-xl scale-105' : 'text-gray-500 hover:text-white'}`}>
-                      {tab === 'todos' ? 'Tudo' : tab === 'curso' ? 'Vídeo Aulas' : 'E-books'}
-                    </button>
-                  ))}
+            <div id="vitrine" className="p-10 lg:p-20 space-y-16">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-10">
+                <div><h2 className="text-4xl lg:text-7xl font-black tracking-tighter mb-4">Acervo <span className="text-purple-500">Exclusivo</span></h2><p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">Módulos vitalícios</p></div>
+                <div className="flex bg-white/5 p-2 rounded-[2.5rem] border border-white/10 backdrop-blur-xl">
+                  {(['todos', 'curso', 'ebook'] as const).map(tab => (<button key={tab} onClick={() => setActiveTab(tab)} className={`px-12 py-5 rounded-[2rem] text-[10px] font-black uppercase tracking-[4px] transition-all duration-300 ${activeTab === tab ? 'bg-purple-600 shadow-2xl scale-105' : 'text-gray-500 hover:text-white'}`}>{tab}</button>))}
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-12 lg:gap-16">
                 {filteredItems.map((item, index) => (
-                  <div key={item.id} className="relative group animate-fade-in" style={{ animationDelay: `${index * 60}ms` }}>
-                    <div className={`absolute -inset-1 bg-gradient-to-br ${item.gradient} rounded-[2rem] opacity-0 group-hover:opacity-25 blur-[30px] transition-all duration-700`}></div>
-                    <div className="relative glass-card rounded-[2rem] border border-white/5 overflow-hidden h-full flex flex-col hover:-translate-y-3 transition-all duration-500 shadow-2xl">
-                      <div className="h-48 overflow-hidden relative">
-                        <img src={item.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[3s]" alt={item.title} />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-                        <div className="absolute top-5 left-5">
-                          <span className="px-4 py-2 glass rounded-xl text-[8px] font-black uppercase tracking-[3px] border border-white/20 text-white shadow-xl backdrop-blur-xl">
-                            {item.type === 'curso' ? 'CURSO' : 'E-BOOK'}
-                          </span>
-                        </div>
+                  <div key={item.id} className="relative group animate-fade-in" style={{ animationDelay: `${index * 50}ms` }} onClick={() => setSelectedItem(item)}>
+                    <div className={`absolute -inset-4 bg-gradient-to-br ${item.gradient} rounded-[4rem] opacity-0 group-hover:opacity-25 blur-[50px] transition-all duration-700 scale-90 group-hover:scale-110`}></div>
+                    <div className="relative glass-card rounded-[3.5rem] border border-white/5 overflow-hidden h-full flex flex-col hover:-translate-y-6 transition-all duration-700 shadow-2xl hover:border-purple-500/40 bg-black/40">
+                      <div className="h-80 overflow-hidden relative">
+                        <img src={item.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[2s]" alt="" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                        <div className="absolute top-6 left-6"><span className="px-6 py-2 glass rounded-2xl text-[11px] font-black uppercase tracking-[4px]">{item.type}</span></div>
                       </div>
-                      <div className="p-8 flex flex-col flex-1">
-                        <h3 className="text-lg font-black mb-4 tracking-tight group-hover:text-purple-400 transition-colors leading-tight">{item.title}</h3>
-                        <div className="text-gray-400 text-[11px] leading-relaxed line-clamp-2 mb-8 italic opacity-70 font-medium h-10">
-                          {renderDescription(item.description)}
-                        </div>
-                        <div className="mt-auto flex justify-between items-end pt-6 border-t border-white/5">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[8px] font-black text-gray-500 uppercase tracking-[3px]">{item.category}</span>
-                            <span className="text-[8px] font-black text-purple-600 uppercase flex items-center gap-1.5"><Eye size={12}/> {item.views} acessos</span>
-                          </div>
-                          <button onClick={async () => {
-                            await supabase.from('materials').update({ views: (item.views || 0) + 1 }).eq('id', item.id);
-                            setSelectedItem({...item, views: (item.views || 0) + 1});
-                          }} className="p-4 bg-purple-600/10 text-purple-400 rounded-2xl hover:bg-purple-600 hover:text-white transition-all shadow-2xl border border-purple-500/10 active:scale-90 group/btn">
-                            <ArrowRight size={20} className="group-hover/btn:translate-x-1 transition-transform" />
-                          </button>
+                      <div className="p-12 flex flex-col flex-1">
+                        <h3 className="text-3xl font-black mb-4 tracking-tighter group-hover:text-purple-400 transition-colors leading-tight">{item.title}</h3>
+                        <div className="text-gray-500 text-sm leading-relaxed line-clamp-3 mb-10 italic">{renderDescription(item.description)}</div>
+                        <div className="mt-auto flex justify-between items-center pt-10 border-t border-white/5">
+                          <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">{item.category}</span>
+                          <div className={`p-6 bg-gradient-to-br ${item.gradient} text-white rounded-[2rem] shadow-3xl hover:scale-110 transition-all`}><ArrowRight size={28}/></div>
                         </div>
                       </div>
                     </div>
@@ -582,57 +325,94 @@ const App: React.FC = () => {
                 ))}
               </div>
             </div>
+          </>
+        ) : (
+          <div className="p-10 lg:p-20 space-y-12 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <h2 className="text-5xl font-black tracking-tighter">Gerenciar <span className="text-orange-500">Acervo</span></h2>
+              <button onClick={() => { setIsEditing(null); setMaterialForm({ title: '', type: 'curso', category: CATEGORIES[0], description: '', imageUrl: '', videoUrl: '' }); }} className="px-10 py-5 rounded-3xl bg-orange-500 font-black uppercase text-xs tracking-widest flex items-center gap-4 hover:scale-105 transition-all shadow-xl"><Plus size={20}/> Novo Material</button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
+              <div className="glass p-12 rounded-[3.5rem] border border-orange-500/20 space-y-8">
+                <h3 className="text-xl font-black flex items-center gap-4"><Edit3 className="text-orange-500"/> {isEditing ? 'Editar Item' : 'Cadastrar Novo'}</h3>
+                <div className="space-y-4">
+                  <input type="text" placeholder="Título do Material" value={materialForm.title} onChange={e => setMaterialForm({...materialForm, title: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:ring-1 focus:ring-orange-500" />
+                  <div className="flex gap-4">
+                    <select value={materialForm.type} onChange={e => setMaterialForm({...materialForm, type: e.target.value as MaterialType})} className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:ring-1 focus:ring-orange-500">
+                      <option value="curso" className="bg-black">Curso</option>
+                      <option value="ebook" className="bg-black">E-book</option>
+                    </select>
+                    <select value={materialForm.category} onChange={e => setMaterialForm({...materialForm, category: e.target.value})} className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:ring-1 focus:ring-orange-500">
+                      {CATEGORIES.map(c => <option key={c} value={c} className="bg-black">{c}</option>)}
+                    </select>
+                  </div>
+                  <textarea placeholder="Descrição (Links serão automáticos)" value={materialForm.description} onChange={e => setMaterialForm({...materialForm, description: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 min-h-[150px] outline-none focus:ring-1 focus:ring-orange-500" />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-500 ml-4"><ImageIcon size={12}/> URL da Capa (JPG/PNG)</div>
+                    <input type="text" value={materialForm.imageUrl} onChange={e => setMaterialForm({...materialForm, imageUrl: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:ring-1 focus:ring-orange-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-500 ml-4"><PlayCircle size={12}/> Link do Vídeo/Acesso</div>
+                    <input type="text" value={materialForm.videoUrl} onChange={e => setMaterialForm({...materialForm, videoUrl: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:ring-1 focus:ring-orange-500" />
+                  </div>
+                  <button onClick={saveMaterial} className="w-full py-6 rounded-3xl bg-green-600 font-black uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-green-500 transition-all shadow-xl">
+                    {isLoading ? <Loader2 className="animate-spin" /> : <Save size={20}/>} {isEditing ? 'Salvar Alterações' : 'Publicar na Biblioteca'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="glass p-12 rounded-[3.5rem] border border-white/5 overflow-hidden flex flex-col">
+                <h3 className="text-xl font-black mb-8 flex items-center gap-4"><Layers className="text-purple-500"/> Lista de Materiais</h3>
+                <div className="space-y-4 overflow-y-auto max-h-[600px] pr-4 scrollbar-hide">
+                  {items.map(item => (
+                    <div key={item.id} className="p-6 bg-white/[0.03] rounded-3xl border border-white/5 flex items-center justify-between hover:bg-white/[0.06] transition-all">
+                      <div className="flex items-center gap-6">
+                        <img src={item.imageUrl} className="w-16 h-16 rounded-xl object-cover" />
+                        <div>
+                          <p className="font-black text-sm">{item.title}</p>
+                          <p className="text-[10px] uppercase text-gray-500 font-bold">{item.category} • {item.type}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => { setIsEditing(item); setMaterialForm(item); }} className="p-4 bg-blue-500/10 text-blue-400 rounded-2xl hover:bg-blue-500 hover:text-white transition-all"><Edit3 size={18}/></button>
+                        <button onClick={() => deleteMaterial(item.id)} className="p-4 bg-red-500/10 text-red-400 rounded-2xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={18}/></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
 
+      {/* MODAL DETALHES */}
       {selectedItem && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 animate-fade-in">
-           <div className="absolute inset-0 bg-black/98 backdrop-blur-2xl" onClick={() => setSelectedItem(null)}></div>
-           <div className="relative w-full max-w-5xl h-full max-h-[85vh] flex flex-col glass border border-white/10 rounded-[3rem] shadow-4xl overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-8 md:p-12 bg-black/60 scrollbar-hide">
-                 <div className="flex justify-between items-start mb-12">
-                    <div className="flex items-center gap-6">
-                       <div className={`p-5 rounded-2xl shadow-2xl bg-gradient-to-br ${selectedItem.gradient} animate-aurora`}>
-                          {selectedItem.type === 'curso' ? <PlayCircle size={32} fill="white" /> : <Book size={32} fill="white" />}
-                       </div>
-                       <div>
-                          <h2 className="text-3xl lg:text-4xl font-black tracking-tighter leading-none mb-3">{selectedItem.title}</h2>
-                          <span className="px-5 py-2 glass rounded-full text-[9px] font-black uppercase tracking-[3px] text-purple-400 border border-purple-500/10">{selectedItem.category}</span>
-                       </div>
-                    </div>
-                    <button onClick={() => setSelectedItem(null)} className="p-3 bg-white/5 rounded-2xl hover:bg-red-500/20 hover:text-red-400 transition-all border border-white/5"><X size={24} /></button>
-                 </div>
-                 
-                 <div className="aspect-video w-full rounded-[2rem] bg-gray-950 overflow-hidden mb-12 border border-white/5 relative group shadow-3xl">
-                    <img src={selectedItem.imageUrl} className="absolute inset-0 w-full h-full object-cover opacity-20 blur-md" alt="" />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
-                       <a href={selectedItem.videoUrl} target="_blank" className="p-12 rounded-full bg-purple-600/30 border border-purple-500/50 hover:bg-purple-600 hover:scale-110 transition-all shadow-4xl backdrop-blur-xl group/play">
-                          {selectedItem.type === 'curso' ? <PlayCircle size={64} fill="white" /> : <Book size={64} fill="white" />}
-                       </a>
-                       <p className="text-[10px] font-black uppercase tracking-[5px] text-white/50">Abrir Conteúdo</p>
-                    </div>
-                 </div>
-
-                 <div className="max-w-3xl space-y-6">
-                    <h3 className="text-xs font-black uppercase tracking-[4px] text-purple-400">Sobre o Material</h3>
-                    <div className="text-gray-300 text-xl italic leading-relaxed font-medium bg-white/[0.02] p-8 rounded-3xl border border-white/5">
-                      {renderDescription(selectedItem.description)}
-                    </div>
-                 </div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-10 animate-fade-in">
+          <div className="absolute inset-0 bg-black/98 backdrop-blur-3xl" onClick={() => setSelectedItem(null)}></div>
+          <div className="relative w-full max-w-[1200px] h-full max-h-[92vh] flex flex-col glass border border-white/10 rounded-[4rem] shadow-3xl overflow-hidden">
+            <div className="overflow-y-auto p-12 lg:p-24 scrollbar-hide">
+              <div className="flex justify-between items-start mb-16">
+                <div><h2 className="text-5xl lg:text-7xl font-black tracking-tighter mb-4">{selectedItem.title}</h2><p className="text-xs text-purple-400 font-black uppercase tracking-[6px]">{selectedItem.category}</p></div>
+                <button onClick={() => setSelectedItem(null)} className="p-6 bg-white/5 rounded-full hover:bg-red-500/20 hover:text-red-400 transition-all border border-white/10"><X size={32} /></button>
               </div>
-           </div>
+              <div className="aspect-video w-full rounded-[4rem] bg-gray-950 overflow-hidden mb-16 border border-white/5 relative group shadow-2xl">
+                <img src={selectedItem.imageUrl} className="w-full h-full object-cover opacity-20" alt="" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <a href={selectedItem.videoUrl} target="_blank" className={`p-20 rounded-full bg-gradient-to-br ${selectedItem.gradient} hover:scale-110 transition-all shadow-2xl backdrop-blur-md`}>
+                    {selectedItem.type === 'curso' ? <PlayCircle size={80} fill="white" /> : <Book size={80} fill="white" />}
+                  </a>
+                </div>
+              </div>
+              <div className="max-w-4xl space-y-12 pb-20">
+                <h3 className="text-3xl font-black border-b border-white/5 pb-8 uppercase tracking-widest text-sm text-purple-500 flex items-center gap-4"><Info size={24} /> Ficha de Módulo</h3>
+                <div className="text-gray-400 text-3xl italic leading-relaxed font-medium">{renderDescription(selectedItem.description)}</div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
-
-      <div className="fixed bottom-6 right-6 space-y-3 z-[200]">
-        {toasts.map(t => (
-          <div key={t.id} className={`px-6 py-4 rounded-2xl text-[10px] font-black shadow-4xl animate-slide-in border-l-4 flex items-center gap-4 ${t.type === 'error' ? 'bg-red-500/10 border-red-500 text-red-200' : 'bg-green-600/10 border-green-500 text-green-200'} backdrop-blur-2xl`}>
-            {t.type === 'error' ? <AlertCircle size={18}/> : <CheckCircle size={18}/>} 
-            <p className="uppercase tracking-widest">{t.message}</p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 };
